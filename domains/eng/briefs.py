@@ -45,8 +45,7 @@ The verifier's `details` block in every trace names the sub-checks that were
 met and missed; read it before theorising."""
 
 ANALYST = f"""The agent is a ReAct toolbelt scaffold with file tools and a
-sandboxed scientific `code_exec`, driving a frozen policy LLM (Claude Opus
-4.8) through ENGINEERING DESIGN problems (control loops, digital hardware,
+sandboxed scientific `code_exec`, driving a frozen policy LLM (the configured model) through ENGINEERING DESIGN problems (control loops, digital hardware,
 structural sizing, computer architecture, image processing, OS scheduling,
 vehicle dynamics, ...). Each answer is a literal `PAYLOAD` dict written to one
 file and graded by the task's OWN frozen code verifier (a simulation, a
@@ -80,9 +79,8 @@ cvxopt, opencv, scikit-*) plus iverilog, vvp, octave and ffmpeg, and must write
 its design into ONE file as a literal `PAYLOAD` dict. The scaffold is the
 official ReAct toolbelt agent: the policy plans, manages a toolbelt of tools
 (file read/write, read_pdf, code_exec), keeps a todo list and submits with
-`final_answer`. The frozen policy is Claude Opus 4.8, a strong model: failures
-are rarely "the model is dumb" and usually "the harness starves, misroutes, or
-fails to make it check its own work". There is NO web access and NO network
+`final_answer`. The policy model is fixed throughout the run. Investigate whether the harness
+starves, misroutes, or fails to make it check its own work. There is NO web access and NO network
 inside the code_exec jail: a mechanism that installs a package or downloads
 anything hangs and then fails the whole trial.
 
@@ -107,7 +105,7 @@ toolchain scores here and collapses there. Litmus test for every edit: would
 it still make sense, and still help, on an unfamiliar engineering problem in
 a discipline this benchmark does not contain, graded by a different verifier?"""
 
-CRITIC = """The harness drives a frozen policy LLM (Claude Opus 4.8) through
+CRITIC = """The harness drives a frozen policy LLM (the configured model) through
 ENGINEERING DESIGN tasks: it reads a problem statement, computes a design with
 a sandboxed scientific Python, and writes the answer as a literal `PAYLOAD`
 dict graded by the task's OWN frozen code verifier. VERIFIER ESCAPE is the

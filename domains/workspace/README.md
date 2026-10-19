@@ -13,8 +13,12 @@ git clone https://github.com/harveyai/harvey-labs.git
 export HARVEY_LAB_ROOT=$PWD/harvey-labs HARVEY_PY=$HARVEY_LAB_ROOT/.venv/bin/python
 export RRSI_AGENT_PYTHON=~/venvs/rrsi-agentic/bin/python         # Python 3.11+ with `pip install -e ".[agentic]"`: the archipelago runner and the MCP gateway
 export CODE_EXEC_PYTHON=$(which python3)                          # behind the gateway's code_exec tool; needs python-docx, openpyxl, python-pptx, pymupdf, pandas
-export VERTEX_PROJECT="your-project-id"                           # the policy model and the Gemini judge
+uv pip install --python "$HARVEY_PY" -e .                      # run from the rrsi root: shared .env and Chat Completions adapter
 ```
+
+Configure `OPENAI_BASE_URL`, `OPENAI_API_KEY`, and `OPENAI_MODEL_NAME` in the rrsi root `.env`. Both the policy and rubric judge use that endpoint; no GCP credentials are needed. The judge retains the pinned benchmark's rubric prompts and score aggregation. Web search remains disabled.
+
+Responses are streamed and then assembled before parsing, including tool-call arguments. Use the project's `agentic` extra to install the tested MCP 1.x / FastMCP 2.x / LiteLLM 1.92.x combination.
 
 ## Run
 

@@ -29,7 +29,7 @@
 
 Evaluate = `scripts/run_eval.sh <job> <dataset> <k> <concurrency> [-i task ...]`
 run from the candidate's worktree (PYTHONPATH = that worktree's third_party/,
-so `--agent harbor_terminus2:AgentHarness` resolves to the candidate's harness). One
+so `rrsi.harbor_agent:AgentHarness` loads the candidate's harness). One
 harbor job = one evaluation; trial directories are `<task>__<hash>` under
 runs/coding/jobs/<job>/. A trial's reward is 1.0 iff the task's hidden tests
 pass; a missing or errored trial counts 0.0 with the full denominator.
@@ -42,7 +42,6 @@ import os
 import re
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -50,11 +49,14 @@ sys.path.insert(0, str(HERE.parent.parent))
 sys.path.insert(0, str(HERE))
 from rrsi.domain import Domain          # noqa: E402
 from rrsi.evaluate import TaskResult    # noqa: E402
+from rrsi.env import litellm_model, model_name, require_openai_env  # noqa: E402
+from rrsi.coding_provenance import ensure_run_policy, trial_policy  # noqa: E402
 import briefs                            # noqa: E402
 import render                            # noqa: E402
 
 CFG = json.loads((HERE / "rrsi.json").read_text())
-PYBIN = os.environ.get("RRSI_CODING_PYTHON", str(HERE / ".venv" / "bin" / "python"))
+PYBIN = os.environ.get("RRSI_CODING_PYTHON", str(
+    Path(os.environ.get("RRSI_CODING_VENV", str(HERE / ".venv"))) / "bin" / "python"))
 
 
 def _load_result(trial_dir: Path) -> dict | None:
@@ -92,7 +94,7 @@ def infra_failure(result: dict) -> bool:
         typ, msg = "", str(e)
     if typ in ("AgentTimeoutError", "VerifierTimeoutError"):
         return False
-    return bool(_INFRA_EXC.search(msg)) or typ in ("RuntimeError", "OSError")
+    return bool(_INFRA_EXC.search(msg)) or typ in ("RuntimeError", "OSError", "ToolPreparationError")
 
 
 def _tokens(result: dict) -> int | None:
@@ -107,7 +109,7 @@ class CodingDomain(Domain):
     name = "coding"
     harness_path = "../../third_party/harbor_terminus2"
     source_exts = {".py", ".txt", ".md", ".json", ".sh"}
-    briefs = {k: v.replace("{policy}", CFG.get("policy_label", "the frozen policy"))
+    briefs = {k: v.replace("{policy}", model_name() or "the configured policy")
               for k, v in {"analyst": briefs.ANALYST, "digester": briefs.DIGESTER,
                            "proposer": briefs.PROPOSER, "critic": briefs.CRITIC}.items()}
     critic_patterns = [
@@ -153,6 +155,8 @@ class CodingDomain(Domain):
     # ---- Evaluate ----------------------------------------------------------
     def _harbor(self, root: Path, runs_dir: Path, job: str, ids: list[str] | None,
                 k: int, dataset: str, log_prefix: str) -> None:
+        require_openai_env()
+        ensure_run_policy(runs_dir)
         jobs = runs_dir / "jobs"
         jobs.mkdir(parents=True, exist_ok=True)
         jdir = jobs / job
@@ -164,12 +168,8 @@ class CodingDomain(Domain):
                 print(f"[coding] job {job} already complete ({n_have} trials); not re-running",
                       flush=True)
                 return
-            # harbor cannot resume a job; a partial dir (killed run, or an earlier
-            # candidate under the same name) would be scored as mostly-missing.
-            stale = jdir.with_name(f"{job}.stale.{int(time.time())}")
-            jdir.rename(stale)
-            print(f"[coding] job {job} was incomplete ({n_have}/{n_want} trials); moved to "
-                  f"{stale.name} and re-running from scratch", flush=True)
+            raise ValueError(f"Job {job} is incomplete ({n_have}/{n_want}) and may still be "
+                             "running; preserve its directory and choose a new job name")
         script = root / "domains" / "coding" / "scripts" / "run_eval.sh"
         cmd = [str(script), job, dataset, str(k), str(CFG.get("concurrency", 10)),
                "--jobs-dir", str(jobs)]
@@ -177,8 +177,7 @@ class CodingDomain(Domain):
             for t in ids:
                 cmd += ["-i", f"terminal-bench/{t}"]
         env = {**os.environ, "RRSI_CODING_ROOT": str(root / "domains" / "coding"),
-               "RRSI_CODING_VENV": str((HERE / ".venv").resolve()),
-               "MODEL": CFG.get("policy_model", "vertex_ai/gemini-3.5-flash")}
+               "RRSI_CODING_VENV": os.environ.get("RRSI_CODING_VENV", str((HERE / ".venv").resolve()))}
         log = runs_dir / "logs" / f"{log_prefix or job}.log"
         log.parent.mkdir(parents=True, exist_ok=True)
         with open(log, "a") as lf:
@@ -206,6 +205,10 @@ class CodingDomain(Domain):
 
     def score(self, runs_dir, job, ids, k):
         trials = self._trials(Path(runs_dir), job)
+        policies = {json.dumps(trial_policy(td), sort_keys=True)
+                    for dirs in trials.values() for td in dirs}
+        if len(policies) > 1:
+            raise ValueError("Cannot combine trials prepared under different environment policies")
         per = {}
         total_pass = 0
         for t in ids:
@@ -226,7 +229,8 @@ class CodingDomain(Domain):
             per[t] = TaskResult(rewards=rewards, tokens=toks, missing=missing,
                                 extra={"passes": passes,
                                        "trial_dirs": [str(d) for d in dirs]})
-        return per, {"total_passes": total_pass, "n_trials": len(ids) * k,
+        return per, {"environment_policy": json.loads(next(iter(policies))) if policies else None,
+                     "total_passes": total_pass, "n_trials": len(ids) * k,
                      "pass_rate": total_pass / max(1, len(ids) * k)}
 
     # ---- evidence ----------------------------------------------------------
@@ -251,22 +255,25 @@ class CodingDomain(Domain):
 
     # ---- gates -------------------------------------------------------------
     def smoke(self, root, runs_dir, job, ids):
+        require_openai_env()
         root, runs_dir = Path(root), Path(runs_dir)
         cdir = root / "domains" / "coding"
         comp = subprocess.run([PYBIN, "-m", "compileall", "-q", str(self.harness_dir(root))],
                               capture_output=True, text=True)
         if comp.returncode != 0:
             return False, {"stage": "compile", "detail": (comp.stdout + comp.stderr)[-1500:]}
-        code = ("from pathlib import Path\nfrom harbor_terminus2 import AgentHarness\n"
+        code = ("from pathlib import Path\nfrom rrsi.harbor_agent import AgentHarness\n"
                 "a = AgentHarness(logs_dir=Path('/tmp/rrsi_ctor_check'), "
-                f"model_name='{CFG.get('policy_model', 'vertex_ai/gemini-3.5-flash')}')\n"
+                f"model_name={litellm_model()!r}, api_base={os.environ['OPENAI_BASE_URL']!r})\n"
                 "assert AgentHarness.name() == 'rrsi-terminus2'\nprint('CTOR_OK')\n")
         ctor = subprocess.run([PYBIN, "-c", code], cwd=str(cdir), capture_output=True,
-                              text=True, env={**os.environ, "PYTHONPATH": str(root / "third_party")})
+                                text=True, env={**os.environ, "PYTHONPATH": os.pathsep.join(
+                                    [str(root), str(root / "third_party")])})
         if "CTOR_OK" not in ctor.stdout:
             return False, {"stage": "ctor", "detail": (ctor.stderr or ctor.stdout)[-1200:]}
         jdir = runs_dir / "jobs" / job
-        subprocess.run(["rm", "-rf", str(jdir)])
+        if jdir.exists():
+            raise ValueError(f"Smoke output already exists: {jdir}; choose a new job name")
         self._harbor(root, runs_dir, job, ids, 1, CFG["dataset"], job)
         found, details = 0, {}
         for td in (jdir.glob("*") if jdir.exists() else []):

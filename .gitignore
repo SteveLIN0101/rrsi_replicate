@@ -1,6 +1,8 @@
 runs/
 __pycache__/
 *.pyc
+*.egg-info/
+.env
 .venv
 .venvs
 domains/*/workspaces/

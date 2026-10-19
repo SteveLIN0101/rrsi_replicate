@@ -17,12 +17,14 @@
 #   bash domains/coding/scripts/swe_eval.sh [n_concurrent]
 set -euo pipefail
 DOM="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"; REPO="$(cd "$DOM/../.." && pwd)"
+export RRSI_CODING_VENV="${RRSI_CODING_VENV:-$DOM/.venv}"
+if [[ "${RRSI_ENV_LOADED:-}" != 1 ]]; then
+  exec "$RRSI_CODING_VENV/bin/python" "$REPO/rrsi/env.py" bash "$0" "$@"
+fi
 RUNS="${RRSI_RUNS_DIR:-$REPO/runs/coding}"; N="${1:-8}"
 DATASET="${SWE_DATASET:-swe-bench/swe-bench-verified}"
 BASE="$(python3 -c "import json;print(json.load(open('$RUNS/frontier.json'))['trajectory'][0]['commit'])")"
 CHAMP="$(python3 -c "import json;print(json.load(open('$RUNS/frontier.json'))['incumbent']['commit'])")"
-export RRSI_CODING_VENV="${RRSI_CODING_VENV:-$DOM/.venv}"
-export MODEL="${MODEL:-$(python3 -c "import json;print(json.load(open('$DOM/rrsi.json')).get('policy_model','vertex_ai/claude-opus-4-8'))")}"
 for arm in "base:$BASE" "best:$CHAMP"; do
   name="${arm%%:*}"; commit="${arm#*:}"; wt="$RUNS/worktrees/swe_$name"
   git -C "$REPO" worktree remove --force "$wt" 2>/dev/null || true

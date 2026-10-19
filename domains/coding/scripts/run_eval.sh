@@ -19,6 +19,13 @@
 # Model/infra invariants are pinned here (frozen; not evolvable).
 set -euo pipefail
 REPO="${RRSI_CODING_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+VENV="${RRSI_CODING_VENV:-$REPO/.venv}"
+if [[ "${RRSI_ENV_LOADED:-}" != 1 ]]; then
+  exec "$VENV/bin/python" "$REPO/../../rrsi/env.py" bash "$0" "$@"
+fi
+: "${OPENAI_BASE_URL:?set OPENAI_BASE_URL in the root .env}"
+: "${OPENAI_API_KEY:?set OPENAI_API_KEY in the root .env}"
+: "${OPENAI_MODEL_NAME:?set OPENAI_MODEL_NAME in the root .env}"
 
 JOB_NAME="${1:?job name required}"
 DATASET="${2:-terminal-bench/terminal-bench-2-1}"
@@ -35,19 +42,35 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-export PATH="$REPO/bin:$PATH"            # docker -> sudo -E docker shim
-export PYTHONPATH="$(cd "$REPO/../.." && pwd)/third_party"   # so --agent harbor_terminus2:AgentHarness resolves
-export VERTEXAI_PROJECT="${VERTEXAI_PROJECT:?set VERTEXAI_PROJECT (GCP project for Vertex AI)}"
-export VERTEXAI_LOCATION="${VERTEXAI_LOCATION:-global}"
-VENV="${RRSI_CODING_VENV:-$REPO/.venv}"
+# The sudo shim is for Linux hosts; Docker Desktop uses the user's socket.
+if [[ "$(uname -s)" == Linux ]]; then
+  export PATH="$REPO/bin:$PATH"
+fi
+ROOT="$(cd "$REPO/../.." && pwd)"
+export PYTHONPATH="$ROOT:$ROOT/third_party"
+
+case "${RRSI_TOOL_IMAGES:-preinstalled}" in
+  preinstalled) TOOL_ENV=rrsi.coding_environment:PreparedDockerEnvironment;;
+  original) TOOL_ENV=docker;;
+  *) echo 'RRSI_TOOL_IMAGES must be preinstalled or original' >&2; exit 2;;
+esac
+# A fresh output directory prevents Harbor resume/overwrite and mixed preparation.
+if [[ -e "$JOBS_DIR/$JOB_NAME" ]]; then
+  echo "Job already exists: $JOBS_DIR/$JOB_NAME; choose a new job name" >&2
+  exit 2
+fi
+"$VENV/bin/python" -m rrsi.coding_provenance --jobs-dir "$JOBS_DIR"
 
 exec "$VENV/bin/harbor" run \
   -d "$DATASET" \
-  --agent harbor_terminus2:AgentHarness \
-  -m "${MODEL:-vertex_ai/gemini-3.5-flash}" \
+  --env "$TOOL_ENV" \
+  --agent rrsi.harbor_agent:AgentHarness \
+  -m "openai/$OPENAI_MODEL_NAME" \
+  --agent-kwarg "api_base=$OPENAI_BASE_URL" \
+  --agent-kwarg 'use_responses_api=false' \
   --agent-kwarg 'llm_kwargs={"num_retries": 10}' \
   -k "$N_ATTEMPTS" \
   -n "$N_CONCURRENT" \
   --jobs-dir "$JOBS_DIR" \
   --job-name "$JOB_NAME" \
-  "${EXTRA[@]}"
+  ${EXTRA[@]+"${EXTRA[@]}"}

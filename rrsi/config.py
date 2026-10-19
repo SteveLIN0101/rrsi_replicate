@@ -52,6 +52,8 @@ import json
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
+from .env import model_name
+
 
 @dataclass
 class RRSIConfig:
@@ -79,18 +81,19 @@ class RRSIConfig:
     n_fail_traces: int = 22
     n_success_traces: int = 6
     eval_parallel: int = 1          # candidates evaluated concurrently
-    proposer_model: str = "claude-opus-4-8"
-    analyst_model: str = "claude-opus-4-8"
-    critic_model: str = "claude-opus-4-8"
+    proposer_model: str = field(default_factory=model_name, init=False)
+    analyst_model: str = field(default_factory=model_name, init=False)
+    critic_model: str = field(default_factory=model_name, init=False)
     notes: dict = field(default_factory=dict)
 
     @classmethod
     def load(cls, path: Path | str, **overrides) -> "RRSIConfig":
         raw = json.loads(Path(path).read_text())
         known = {f.name for f in fields(cls)}
-        kw = {k: v for k, v in raw.items() if k in known}
+        configurable = {f.name for f in fields(cls) if f.init}
+        kw = {k: v for k, v in raw.items() if k in configurable}
         kw["notes"] = {k: v for k, v in raw.items() if k not in known}
-        kw.update({k: v for k, v in overrides.items() if v is not None})
+        kw.update({k: v for k, v in overrides.items() if v is not None and k in configurable})
         return cls(**kw)
 
     def dump(self) -> dict:

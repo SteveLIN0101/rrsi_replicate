@@ -72,6 +72,7 @@ os.environ.setdefault("RRSI_HARNESS_MODULE", "harness_eng.main")
 sys.path.insert(0, str(ROOT))
 
 import config  # noqa: E402
+from rrsi.env import require_openai_env  # noqa: E402
 from runner.agents.models import AgentRunInput  # noqa: E402
 from runner.agents.registry import get_agent_impl  # noqa: E402
 from harness_eng.prompts import (  # noqa: E402
@@ -186,10 +187,7 @@ async def run_trial(task: dict, trial: int, job: str, sem: asyncio.Semaphore) ->
             schema_file=str(ws / "output_structure.py"),
             candidate_file=str(ws / config.CANDIDATE_REL),
         )
-        # Same frozen model over several Vertex projects: spread trials so
-        # throughput is not capped by one project's quota. Deterministic in
-        # (task, trial) so resuming a job does not reshuffle routes -- champion
-        # and candidate must draw the same route for the same task.
+        # Baseline and candidates use the same configured endpoint.
         eps = config.POLICY_ENDPOINTS
         h = int(hashlib.md5(tid.encode()).hexdigest()[:8], 16)
         ep = eps[(h + trial) % len(eps)] if eps else {
@@ -226,7 +224,7 @@ async def run_trial(task: dict, trial: int, job: str, sem: asyncio.Semaphore) ->
         meta = {"id": tid, "trial": trial, "status": status,
                 "domain": task["domain"], "wall_s": round(wall, 1),
                 "model": ep["model"],
-                "vertex_project": ep["extra_args"].get("vertex_project")}
+                "api_base": ep["extra_args"].get("api_base")}
         if output is not None:
             try:
                 dump = output.model_dump(mode="json")
@@ -258,6 +256,7 @@ async def main():
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--concurrency", type=int, default=config.MAX_CONCURRENT)
     args = ap.parse_args()
+    require_openai_env()
 
     tasks = select_tasks(args.set, args.ids, args.limit)
     if not tasks:

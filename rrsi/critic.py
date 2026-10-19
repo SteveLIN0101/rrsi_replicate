@@ -33,7 +33,7 @@ suite-specific logic, as well as edits that add inert machinery. Two layers:
 
 1. Deterministic pre-checks: a generic denylist (credentials, infra names)
    plus the domain's own patterns (grader paths, task ids, judge references).
-2. LLM review (Claude Opus 4.8) of intent and content, not style.
+2. LLM review (the configured model) of intent and content, not style.
 
 A rejection sends the objections back to the proposer for a bounded number of
 repair rounds; a candidate that cannot be repaired is dropped and recorded in

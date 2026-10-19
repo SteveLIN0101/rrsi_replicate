@@ -21,6 +21,9 @@
 # GATEWAY_PORT exported. Grading uses the benchmark's own judge.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ "${RRSI_ENV_LOADED:-}" != 1 ]]; then
+  exec "${RRSI_AGENT_PYTHON:-python3}" "$HERE/../../../rrsi/env.py" bash "$0" "$@"
+fi
 JB="${JOBBENCH_REPO:?set JOBBENCH_REPO to the checkout of the JobBench runner}"
 AGENT_DIR="${JOBBENCH_AGENT_DIR:-engine/runner/agents/react_toolbelt_agent}"
 CMD="${JOBBENCH_RUN_CMD:?set JOBBENCH_RUN_CMD to the runner command (run in JOBBENCH_REPO)}"

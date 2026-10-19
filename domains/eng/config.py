@@ -52,35 +52,20 @@ EngDesign domain (a different benchmark's verifiers).
 """
 
 import os
+import sys
+from pathlib import Path
 
-# ---- Vertex / models ---------------------------------------------------------
-VERTEX_PROJECT = os.environ.get("VERTEX_PROJECT", "")
-VERTEX_LOCATION = os.environ.get("VERTEX_LOCATION", "global")
-os.environ.setdefault("VERTEXAI_PROJECT", VERTEX_PROJECT)
-os.environ.setdefault("VERTEXAI_LOCATION", VERTEX_LOCATION)
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from rrsi.env import litellm_model  # noqa: E402; loads root .env
 
-# Frozen policy under evolution. With opus-4-8 the suite sits in the band where
-# a scaffold change can actually separate: not saturated, not on the floor.
-ORCHESTRATOR_MODEL = os.environ.get("ORCHESTRATOR_MODEL", "vertex_ai/claude-opus-4-8")
-ORCHESTRATOR_EXTRA_ARGS: dict = {}      # no temperature / reasoning_effort
-
-# Anthropic-on-Vertex lives in specific projects; spreading trials over both
-# doubles the usable quota. Route choice is deterministic in (task, trial), and
-# this list is FROZEN after the baseline: champion and candidate must draw the
-# same route for the same task or the comparison includes a quota difference.
-ANTHROPIC_VERTEX_PROJECTS = [
-    p.strip() for p in os.environ.get(
-        "ANTHROPIC_VERTEX_PROJECTS", VERTEX_PROJECT).split(",")
-    if p.strip()
-]
+# Keep this endpoint fixed across baseline and candidate evaluations.
+ORCHESTRATOR_MODEL = litellm_model()
+ORCHESTRATOR_EXTRA_ARGS: dict = {}
 
 
 def policy_endpoints() -> list[dict]:
-    """[{model, extra_args}] -- every entry is the same frozen policy model."""
-    model_id = ORCHESTRATOR_MODEL.split("/")[-1]
-    return [{"model": f"vertex_ai/{model_id}",
-             "extra_args": {"vertex_project": p, "vertex_location": VERTEX_LOCATION}}
-            for p in ANTHROPIC_VERTEX_PROJECTS]
+    return [{"model": ORCHESTRATOR_MODEL,
+             "extra_args": {"api_base": os.environ.get("OPENAI_BASE_URL", "")}}]
 
 
 POLICY_ENDPOINTS = policy_endpoints()

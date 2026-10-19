@@ -69,14 +69,53 @@ The benchmark runners live in their own environments: harbor for the coding inst
 
 ### 1. LLM configuration
 
-The proposer, the analyst, the critic and the frozen policy are Claude Opus 4.8 on Vertex AI (`policy_model` in `domains/coding/rrsi.json`, `ORCHESTRATOR_MODEL` for the other two instances; any LiteLLM model string works). The Harvey LAB judge is Gemini 3.5 Flash.
+All search roles, benchmark policies, and the Harvey LAB judge use the same
+OpenAI-compatible **Chat Completions** endpoint. Configure the repository root
+`.env` (copy `.env.example` if needed):
+
+```dotenv
+OPENAI_BASE_URL=https://your-provider.example/v1
+OPENAI_API_KEY=your-api-key
+OPENAI_MODEL_NAME=your-model-name
+```
+
+Use the server's model ID exactly, including any namespace; do not add a LiteLLM
+routing prefix. RRSI adds `openai/` internally for Harbor and Archipelago. The
+base URL is the API root, not the full `/chat/completions` path. The policy
+endpoint must support streaming, tool calls and report token usage. Responses
+are streamed and assembled before parsing to avoid proxy idle timeouts on long
+generations. Search and judging
+require JSON replies; no provider-specific structured-output API is required.
+
+The CLI and standalone benchmark entry points load `.env` before reading model
+configuration. Existing process environment variables take precedence. Child
+processes inherit them; linked Git worktrees can also read the main checkout's
+ignored `.env`. API keys are not stored in run configuration or command-line
+arguments. Legacy `RRSI_SEARCH_MODEL`, `ORCHESTRATOR_MODEL`, and JSON model
+settings no longer select a different model. Google Cloud credentials are not
+needed.
 
 ```bash
-gcloud auth application-default login
-export VERTEX_PROJECT="your-project-id" VERTEXAI_PROJECT="your-project-id"
-export VERTEX_LOCATION=global VERTEXAI_LOCATION=global
-export RRSI_VERTEX_PROJECTS="your-project-id"
+uv venv --python 3.12
+uv pip install --python .venv/bin/python -e ".[dev]"
+.venv/bin/python -m rrsi.llm             # small live connectivity check
+.venv/bin/python -m pytest tests        # offline regression tests
 ```
+
+Install `.[agentic]` or `.[coding]` in the relevant benchmark Python environment
+as well. The Harvey LAB environment needs `uv pip install --python
+"$HARVEY_PY" -e .` from the RRSI root for the Chat Completions judge adapter.
+Its original rubric prompts, file extraction and score aggregation are retained;
+the auxiliary filename matcher uses the same configured endpoint too.
+
+Commit the migration before starting evolution: candidates are checked out from
+Git commits, so uncommitted runner changes are not copied into their worktrees.
+Use a fresh baseline/run directory after changing the model; old results and the
+paper's calibration thresholds are not measurements of the new model. Recalibrate
+for the new baseline. The workspace gateway stays closed to web search; enabling
+`ENABLE_WEB_SEARCH=1` fails explicitly because generic Chat Completions does not
+supply Google's grounded-search tool. External OOD checkout commands inherit the
+three variables but their own drivers/judges must support this configuration.
 
 ### 2. Run an instance
 

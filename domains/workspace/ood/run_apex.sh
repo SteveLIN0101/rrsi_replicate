@@ -24,6 +24,9 @@
 # Grading is the benchmark's own rubric judge; report pass@1 over the full task set.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ "${RRSI_ENV_LOADED:-}" != 1 ]]; then
+  exec "${RRSI_AGENT_PYTHON:-python3}" "$HERE/../../../rrsi/env.py" bash "$0" "$@"
+fi
 AP="${APEX_REPO:?set APEX_REPO to the checkout of the APEX-Agents runner}"
 AGENT_DIR="${APEX_AGENT_DIR:-agents/runner/agents/react_toolbelt_agent}"
 CMD="${APEX_RUN_CMD:?set APEX_RUN_CMD to the runner command (run in APEX_REPO)}"

@@ -51,6 +51,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
+from rrsi.env import require_openai_env     # noqa: E402; loads .env before config
 from rrsi import gitops as G                 # noqa: E402
 from rrsi.config import RRSIConfig          # noqa: E402
 from rrsi.domain import load_domain          # noqa: E402
@@ -92,6 +93,8 @@ def main():
     sub.add_parser("status")
     args = ap.parse_args()
 
+    if args.cmd not in {"status", "calibrate", "readjudicate"}:
+        require_openai_env()
     domain = load_domain(args.domain)
     cfg = RRSIConfig.load(domain.root / "rrsi.json",
                            **{k: getattr(args, k) for k in OVERRIDES})

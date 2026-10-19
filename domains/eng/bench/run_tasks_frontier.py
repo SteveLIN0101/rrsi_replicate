@@ -68,6 +68,7 @@ os.environ.setdefault("RRSI_HARNESS_MODULE", "harness_eng.main")
 sys.path.insert(0, str(ROOT))
 
 import config  # noqa: E402
+from rrsi.env import require_openai_env  # noqa: E402
 from runner.agents.models import AgentRunInput  # noqa: E402
 from runner.agents.registry import get_agent_impl  # noqa: E402
 from harness_eng.prompts import SYSTEM_PROMPT  # noqa: E402
@@ -237,6 +238,7 @@ async def main():
     ap.add_argument("--concurrency", type=int, default=config.MAX_CONCURRENT)
     ap.add_argument("--tasks", default="")
     a = ap.parse_args()
+    require_openai_env()
 
     froot = Path(a.frontier_root).resolve()
     tasks = load_tasks(Path(a.manifest))

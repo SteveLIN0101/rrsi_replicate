@@ -27,7 +27,7 @@
 # limitations under the License.
 """The regularized proposer P_reg(. | H_t, F_t, L_t, b_t, E_t) of Algorithm 1.
 
-A Claude Opus 4.8 coding agent that edits the harness IN PLACE inside a
+A coding agent using the configured model that edits the harness IN PLACE inside a
 candidate's worktree through a strict-JSON action protocol and finishes with
 done(edits=[...]). Every edit is tagged with (component l', hypothesis h');
 the diff d' is taken from git afterwards. The agent is conditioned on:

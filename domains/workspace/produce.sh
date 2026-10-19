@@ -17,19 +17,20 @@
 set -uo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; cd "$REPO"
 VENV="${VENV:-${RRSI_AGENT_PYTHON:?set RRSI_AGENT_PYTHON (python with the archipelago runner deps)}}"
+if [[ "${RRSI_ENV_LOADED:-}" != 1 ]]; then
+  exec "$VENV" "$REPO/../../rrsi/env.py" bash "$REPO/produce.sh" "$@"
+fi
 label="${1:?label}"; tasks="${2:?tasks json}"; shift 2
 
-export VERTEX_PROJECT="${VERTEX_PROJECT:?set VERTEX_PROJECT (GCP project for Vertex AI)}"
-export VERTEX_LOCATION="${VERTEX_LOCATION:-global}"
-export VERTEXAI_PROJECT="$VERTEX_PROJECT"
-export VERTEXAI_LOCATION="$VERTEX_LOCATION"
 export GATEWAY_PORT="${GATEWAY_PORT:-8992}"
 export CODE_EXEC_PYTHON="${CODE_EXEC_PYTHON:-/opt/conda/bin/python3}"
 
 "$VENV" -m compileall -q "$REPO/../../third_party/archipelago/harness_workspace" || { echo "compile fail"; exit 1; }
 mkdir -p "${RRSI_LOGS:-logs}"
 GW_LOG="${RRSI_LOGS:-logs}/gateway_$(echo "$label" | tr / _).log"
-setsid "$VENV" "$REPO/mcp_gateway/gateway.py" >"$GW_LOG" 2>&1 &
+# Python's setsid works on macOS too, where the setsid command is absent.
+"$VENV" -c 'import os, sys; os.setsid(); os.execv(sys.argv[1], sys.argv[1:])' \
+  "$VENV" "$REPO/mcp_gateway/gateway.py" >"$GW_LOG" 2>&1 &
 GW_PID=$!
 trap 'kill -- -$GW_PID 2>/dev/null' EXIT
 for i in $(seq 1 30); do
@@ -37,6 +38,6 @@ for i in $(seq 1 30); do
   sleep 1
 done
 
-MODEL_LABEL="$label" ORCHESTRATOR_MODEL="${ORCHESTRATOR_MODEL:-vertex_ai/claude-opus-4-8}" \
+MODEL_LABEL="$label" \
 MAX_CONCURRENT="${MAX_CONCURRENT:-12}" \
   "$VENV" "$REPO/workspace_driver.py" --subset "$tasks" "$@"

@@ -32,7 +32,6 @@ react_toolbelt agent needs for job-bench:
   - write_file
   - read_pdf (pymupdf)
   - code_exec (subprocess shell; conda python on PATH for the data stack)
-  - web_search (google genai + google_search grounding, Vertex mode)
 
 Deliberately excludes the archipelago mail/calendar/chat app tools and the
 buggy spreadsheets/documents meta-tools — office formats go through code_exec
@@ -55,9 +54,6 @@ GATEWAY_HOST = os.environ.get("GATEWAY_HOST", "127.0.0.1")
 GATEWAY_PORT = int(os.environ.get("GATEWAY_PORT", "8990"))
 CODE_EXEC_PYTHON = os.environ.get("CODE_EXEC_PYTHON", "/opt/conda/bin/python3")
 CODE_EXEC_TIMEOUT = int(os.environ.get("CODE_EXEC_TIMEOUT", "300"))
-VERTEX_PROJECT = os.environ.get("VERTEX_PROJECT", "")
-VERTEX_LOCATION = os.environ.get("VERTEX_LOCATION", "global")
-WEB_SEARCH_MODEL = os.environ.get("WEB_SEARCH_MODEL", "gemini-3.5-flash")
 
 MAX_READ_CHARS = 200_000
 
@@ -66,7 +62,7 @@ mcp = FastMCP(
     instructions=(
         "Tools for completing white-collar file tasks: read/write files, run "
         "shell+python code for data processing and producing deliverables "
-        "(xlsx/docx/pptx/pdf/csv), read PDFs, and search the live web."
+        "(xlsx/docx/pptx/pdf/csv), read PDFs, in the closed task workspace."
     ),
 )
 
@@ -211,83 +207,9 @@ def code_exec(code: str, workdir: str | None = None) -> dict:
     return {"success": proc.returncode == 0, "output": out, "returncode": proc.returncode}
 
 
-# ---------------------------------------------------------------------------- #
-# Web search (google genai + google_search grounding, Vertex mode)
-# ---------------------------------------------------------------------------- #
-_genai_client = None
-
-
-def _get_genai_client():
-    global _genai_client
-    if _genai_client is None:
-        from google import genai
-
-        _genai_client = genai.Client(
-            vertexai=True, project=VERTEX_PROJECT, location=VERTEX_LOCATION
-        )
-    return _genai_client
-
-
-def _register_web_search():
-    pass
-
-
+# Generic Chat Completions does not provide Google's grounded-search tool.
 if os.environ.get("ENABLE_WEB_SEARCH", "0") == "1":
-    _ws_decorator = mcp.tool
-else:
-    _ws_decorator = lambda f: f  # not registered: closed-workspace benchmark
-
-
-@_ws_decorator
-def web_search(query: str, k: int = 5) -> str:
-    """Search the live web and return a grounded answer plus the top-k source
-    snippets (title, url, text). Use this to find external reference data that
-    is NOT in the task folder (the task may require datasets/specs you must
-    discover online)."""
-    from google.genai import types
-
-    client = _get_genai_client()
-    try:
-        resp = client.models.generate_content(
-            model=WEB_SEARCH_MODEL,
-            contents=query,
-            config=types.GenerateContentConfig(
-                tools=[types.Tool(google_search=types.GoogleSearch())]
-            ),
-        )
-    except Exception as e:  # noqa: BLE001
-        return f"web_search error: {e!r}"
-
-    answer = resp.text or ""
-    try:
-        gm = resp.candidates[0].grounding_metadata
-        chunks = list(gm.grounding_chunks or [])
-        supports = list(gm.grounding_supports or [])
-    except Exception:  # noqa: BLE001
-        chunks, supports = [], []
-
-    text_by_chunk: dict[int, str] = {}
-    for sup in supports:
-        seg_text = ""
-        try:
-            seg_text = sup.segment.text or ""
-        except Exception:  # noqa: BLE001
-            seg_text = ""
-        for idx in (sup.grounding_chunk_indices or []):
-            text_by_chunk.setdefault(idx, seg_text)
-
-    lines = [f"ANSWER:\n{answer}\n", "SOURCES:"]
-    for i, ch in enumerate(chunks[:k]):
-        try:
-            title = ch.web.title or ""
-            url = ch.web.uri or ""
-        except Exception:  # noqa: BLE001
-            title, url = "", ""
-        snippet = text_by_chunk.get(i, "")
-        lines.append(f"[{i + 1}] {title}\n    {url}\n    {snippet}")
-    if not chunks:
-        lines.append("(no grounded sources returned)")
-    return "\n".join(lines)
+    raise RuntimeError("ENABLE_WEB_SEARCH=1 is unsupported: this gateway uses closed-workspace tools")
 
 
 if __name__ == "__main__":

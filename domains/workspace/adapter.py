@@ -51,6 +51,7 @@ sys.path.insert(0, str(HERE.parent.parent))
 sys.path.insert(0, str(HERE))
 from rrsi.domain import Domain          # noqa: E402
 from rrsi.evaluate import TaskResult    # noqa: E402
+from rrsi.env import require_openai_env  # noqa: E402
 import briefs                            # noqa: E402
 import render                            # noqa: E402
 
@@ -135,6 +136,7 @@ class WorkspaceDomain(Domain):
 
     # ---- Evaluate ----------------------------------------------------------
     def _env(self, runs_dir: Path, job: str) -> dict:
+        require_openai_env()
         port = CFG["gateway_port"] + (abs(hash(job)) % 40)
         return {**os.environ,
                 "RRSI_JOBS_DIR": str(runs_dir / "jobs"),
@@ -142,9 +144,7 @@ class WorkspaceDomain(Domain):
                 "RRSI_WORKSPACES": str(runs_dir / "workspaces"),
                 "RRSI_LOGS": str(runs_dir / "logs"),
                 "GATEWAY_PORT": str(port), "HARVEY_LAB_ROOT": str(HARVEY_LAB_ROOT),
-                "VENV": AGENT_PY, "MAX_CONCURRENT": str(CFG["max_concurrent"]),
-                "ORCHESTRATOR_MODEL": os.environ.get("ORCHESTRATOR_MODEL",
-                                                     "vertex_ai/claude-opus-4-8")}
+                "VENV": AGENT_PY, "MAX_CONCURRENT": str(CFG["max_concurrent"])}
 
     def _produce(self, root: Path, runs_dir: Path, label: str, ids: list[str]) -> int:
         wdir = root / "domains" / "workspace"
@@ -169,14 +169,12 @@ class WorkspaceDomain(Domain):
     def _judge(self, root: Path, runs_dir: Path, label: str) -> None:
         wdir = root / "domains" / "workspace"
         log = runs_dir / "logs" / f"{label.replace('/', '_')}.judge.log"
-        env = {**os.environ, "GOOGLE_GENAI_USE_VERTEXAI": "true",
-               "GOOGLE_CLOUD_PROJECT": os.environ.get("VERTEX_PROJECT", ""),
-               "GOOGLE_CLOUD_LOCATION": "global", "HARVEY_LAB_ROOT": str(HARVEY_LAB_ROOT),
+        require_openai_env()
+        env = {**os.environ, "HARVEY_LAB_ROOT": str(HARVEY_LAB_ROOT),
                "RRSI_JOBS_DIR": str(runs_dir / "jobs")}
         for attempt in range(3):
             with open(log, "a") as lf:
-                r = subprocess.run([str(HARVEY_PY), str(wdir / "workspace_judge.py"), label,
-                                    "--judge-model", CFG["judge_model"]],
+                r = subprocess.run([str(HARVEY_PY), str(wdir / "workspace_judge.py"), label],
                                    cwd=str(wdir), env=env, stdout=lf, stderr=subprocess.STDOUT)
             if r.returncode == 0 and (runs_dir / "jobs" / label / "SUMMARY.json").exists():
                 return

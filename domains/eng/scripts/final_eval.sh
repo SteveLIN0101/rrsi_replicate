@@ -33,6 +33,9 @@ DOM="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"          # domains/eng (m
 REPO="$(cd "$DOM/../.." && pwd)"                                  # rrsi root
 RUNS="${RRSI_RUNS_DIR:-$REPO/runs/eng}"
 PY="${PYBIN:-${RRSI_AGENT_PYTHON:?set RRSI_AGENT_PYTHON}}"
+if [[ "${RRSI_ENV_LOADED:-}" != 1 ]]; then
+  exec "$PY" "$REPO/rrsi/env.py" bash "$0" "$@"
+fi
 FR_ROOT="${FROOT:-$DOM/Frontier-Engineering}"
 MANIFEST="${FRONTIER_MANIFEST:-$DOM/data/frontier_manifest.json}"
 SURFACE="${1:?surface: v1 | frontier}"

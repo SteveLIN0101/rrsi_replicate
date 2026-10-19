@@ -32,33 +32,40 @@ For each runs/<label>/<task>/ with output/, calls harvey-labs
 evaluation.scoring.score_rubric verbatim and writes scores.json next to the
 output. Idempotent: skips tasks that already have scores.json.
 
-Run under the harvey-labs venv:
-  GOOGLE_GENAI_USE_VERTEXAI=true GOOGLE_CLOUD_PROJECT=<project> \
-  GOOGLE_CLOUD_LOCATION=global \
-  harvey-labs/.venv/bin/python workspace_judge.py <label> [--judge-model gemini-3.5-flash]
+Run under the harvey-labs venv with rrsi installed:
+  harvey-labs/.venv/bin/python workspace_judge.py <label>
+The model and credentials come from the rrsi root .env.
 """
 import argparse
 import json
 import os
 import sys
+from functools import partial
+from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, str(Path(HERE).parents[1]))
+from rrsi.env import model_name, require_openai_env  # noqa: E402
+from domains.workspace.openai_judge import OpenAIJudge, match_deliverables  # noqa: E402
+
 HARVEY_LAB_ROOT = os.environ.get("HARVEY_LAB_ROOT", "harvey-labs")
 sys.path.insert(0, HARVEY_LAB_ROOT)
-
-from evaluation.judge import Judge            # noqa: E402
-from evaluation.scoring import score_rubric   # noqa: E402
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("label")
-    ap.add_argument("--judge-model", default="gemini-3.5-flash")
     ap.add_argument("--parallel", type=int, default=8)
     args = ap.parse_args()
+    require_openai_env()
+    from evaluation import scoring
+
+    # Upstream's filename fallback otherwise calls Anthropic independently.
+    scoring._llm_match_deliverables = partial(
+        match_deliverables, read_file=scoring._read_file_as_text)
 
     runs = os.path.join(os.environ.get("RRSI_JOBS_DIR", os.path.join(HERE, "runs")), args.label)
-    judge = Judge(model=args.judge_model)
+    judge = OpenAIJudge(Path(scoring.__file__).parent / "prompts")
     names = sorted(os.listdir(runs))
     done = passed_tasks = 0
     for name in names:
@@ -75,7 +82,7 @@ def main():
         tj = json.load(open(os.path.join(task_dir, "task.json")))
         criteria = tj.get("criteria") or []
         try:
-            res = score_rubric(criteria, run_dir, judge,
+            res = scoring.score_rubric(criteria, run_dir, judge,
                                task_desc=tj.get("title", name),
                                parallel=args.parallel)
             payload = {
@@ -104,7 +111,7 @@ def main():
     crit_pass = sum(a["passed"] for a in aggs)
     crit_tot = sum(a["total"] for a in aggs)
     summary = {
-        "label": args.label, "judge": args.judge_model,
+        "label": args.label, "judge": model_name(),
         "n_judged": n,
         "all_pass_tasks": sum(a["all_pass"] for a in aggs),
         "all_pass_rate": round(sum(a["all_pass"] for a in aggs) / max(1, n), 4),

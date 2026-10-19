@@ -29,8 +29,7 @@
 
 ANALYST = """The agent performs professional LEGAL work (contract review and
 drafting, M&A diligence, IP, governance, funds, litigation support; 25
-practice areas) on the Harvey LAB benchmark: a frozen policy LLM (Claude Opus
-4.8) driven by a ReAct toolbelt scaffold reads a folder of source documents
+practice areas) on the Harvey LAB benchmark: a frozen policy LLM (the configured model) driven by a ReAct toolbelt scaffold reads a folder of source documents
 (.docx/.xlsx/.pdf) and must write DELIVERABLE FILES under exact requested
 filenames. Grading is a strict per-criterion rubric: each task carries 20-100
 independent pass/fail criteria judged against the deliverable files, and the
@@ -57,9 +56,8 @@ scaffold is the official ReAct toolbelt agent: the policy plans, manages a
 toolbelt of gateway tools (file read/write, read_pdf, code_exec with a rich
 scientific Python for producing .docx/.xlsx/.pptx), keeps a todo list, and
 submits with `final_answer` (gated on completed todos). Deliverables are what
-gets graded; the chat answer is not scored. The frozen policy is Claude Opus
-4.8, a strong model: failures are rarely "the model is dumb" and usually "the
-harness starves, floods, or misroutes it".
+gets graded; the chat answer is not scored. The policy model is fixed throughout the run. Investigate whether the
+harness starves, floods, or misroutes it before attributing failures to the model.
 
 Grading is a STRICT PER-CRITERION rubric (20-100 criteria per task). Passing
 MORE criteria on tasks the agent already attempts well (coverage,
@@ -81,7 +79,7 @@ layout, judge phrasing). Litmus test: would this help a competent lawyer
 producing deliverables on MANY unfamiliar legal tasks, in any reasonable
 working environment?"""
 
-CRITIC = """The harness drives a frozen policy LLM (Claude Opus 4.8) through
+CRITIC = """The harness drives a frozen policy LLM (the configured model) through
 legal document tasks (Harvey LAB): it reads source documents and writes
 deliverable files graded by a per-criterion rubric judge. This evolution line
 is law-domain-only, so LAW-GENERAL professional method ("read the controlling

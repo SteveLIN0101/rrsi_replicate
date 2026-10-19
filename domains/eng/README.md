@@ -15,10 +15,12 @@ python3 scripts/engdesign/build_engdesign_bench.py --engdesign-open EngDesign/En
 python3 -m venv .venvs/engdesign && .venvs/engdesign/bin/pip install -r scripts/engdesign/requirements.txt   # the verifiers' dependencies (GRADING_PYTHON)
 bash scripts/engdesign/setup_host_deps.sh                                                                    # iverilog, vvp, ffmpeg
 sudo apt-get install -y bubblewrap octave                                                                    # the code_exec jail; octave for the tasks that call it
-export RRSI_AGENT_PYTHON=~/venvs/rrsi-agentic/bin/python VERTEX_PROJECT="your-project-id"
+export RRSI_AGENT_PYTHON=~/venvs/rrsi-agentic/bin/python
 ```
 
 The builder writes `engdesign_bench/benchmarks/<domain>/<task>/`: the full upstream task next to a `frontier_eval/` wrapper that `bench/verify.py` runs. Only the prompt, the response schema, the payload stub and the images are ever copied into an agent workspace, and `code_exec` runs under bwrap with that workspace as the only writable mount and no network.
+
+Configure `OPENAI_BASE_URL`, `OPENAI_API_KEY`, and `OPENAI_MODEL_NAME` in the rrsi root `.env`. Install rrsi with the `agentic` extra in `RRSI_AGENT_PYTHON`; both evaluation runners load the shared endpoint configuration.
 
 ## Run
 

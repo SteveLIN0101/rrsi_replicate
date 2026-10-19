@@ -51,6 +51,9 @@ import sys
 import traceback
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(HERE, "..", ".."))
+from rrsi.env import litellm_model, require_openai_env  # noqa: E402
+
 sys.path.insert(0, os.path.join(HERE, "..", "..", "third_party", "archipelago"))
 os.environ.setdefault("RRSI_HARNESS_MODULE", "harness_workspace.main")
 
@@ -59,7 +62,7 @@ from runner.agents.registry import get_agent_impl  # noqa: E402
 
 HARVEY_LAB_ROOT = os.environ.get("HARVEY_LAB_ROOT", "harvey-labs")
 MODEL_LABEL = os.environ.get("MODEL_LABEL", "opus48_base")
-ORCHESTRATOR_MODEL = os.environ.get("ORCHESTRATOR_MODEL", "vertex_ai/claude-opus-4-8")
+ORCHESTRATOR_MODEL = litellm_model()
 GATEWAY_URL = f"http://127.0.0.1:{os.environ.get('GATEWAY_PORT', '8991')}/mcp/"
 MAX_CONCURRENT = int(os.environ.get("MAX_CONCURRENT", "6"))
 TIMEOUT_PER_TASK = int(os.environ.get("TIMEOUT_PER_TASK", "3600"))
@@ -191,7 +194,7 @@ async def run_one(task: dict, sem: asyncio.Semaphore) -> dict:
             mcp_gateway_url=GATEWAY_URL,
             mcp_gateway_auth_token=None,
             orchestrator_model=ORCHESTRATOR_MODEL,
-            orchestrator_extra_args={},
+            orchestrator_extra_args={"api_base": os.environ["OPENAI_BASE_URL"]},
             agent_config_values=dict(AGENT_CONFIG_VALUES),
         )
 
@@ -236,6 +239,7 @@ async def main():
     ap.add_argument("--only", default="")
     args = ap.parse_args()
 
+    require_openai_env()
     os.makedirs(WORKSPACES, exist_ok=True)
     os.makedirs(RUNS, exist_ok=True)
     tasks = find_tasks(args.subset)

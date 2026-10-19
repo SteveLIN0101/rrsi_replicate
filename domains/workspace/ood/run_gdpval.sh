@@ -21,6 +21,9 @@
 # GATEWAY_PORT exported. Grading uses the benchmark's own judge.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ "${RRSI_ENV_LOADED:-}" != 1 ]]; then
+  exec "${RRSI_AGENT_PYTHON:-python3}" "$HERE/../../../rrsi/env.py" bash "$0" "$@"
+fi
 GD="${GDPVAL_REPO:?set GDPVAL_REPO to the checkout of the GDPval runner}"
 AGENT_DIR="${GDPVAL_AGENT_DIR:-engine/runner/agents/react_toolbelt_agent}"
 CMD="${GDPVAL_RUN_CMD:?set GDPVAL_RUN_CMD to the runner command (run in GDPVAL_REPO)}"

@@ -18,7 +18,8 @@ from enum import StrEnum
 from typing import Any
 
 import litellm
-from litellm import acompletion, aresponses
+from litellm import aresponses
+from rrsi.chat_transport import acompletion
 from litellm.exceptions import (
     APIConnectionError,
     BadGatewayError,
